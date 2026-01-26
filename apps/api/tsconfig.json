@@ -3,11 +3,7 @@
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src",
-    "declaration": true,
-    "baseUrl": ".",
-    "paths": {
-      "@sidewalk/stellar": ["../../packages/stellar/src/index.ts"]
-    }
+    "declaration": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
