@@ -1,16 +1,16 @@
-import { Horizon, Keypair } from '@stellar/stellar-sdk';
+import { Horizon, Keypair } from "@stellar/stellar-sdk";
 
 export class StellarService {
   private server: Horizon.Server;
   private keypair: Keypair;
 
   constructor(secretKey: string) {
-    this.server = new Horizon.Server('https://horizon-testnet.stellar.org');
+    this.server = new Horizon.Server("https://horizon-testnet.stellar.org");
 
     try {
       this.keypair = Keypair.fromSecret(secretKey);
     } catch (error) {
-      throw new Error('Invalid Stellar Secret Key provided.');
+      throw new Error("Invalid Stellar Secret Key provided.");
     }
   }
 
@@ -24,18 +24,18 @@ export class StellarService {
 
     try {
       await this.server.loadAccount(publicKey);
-      console.log('✅ Account is active and funded.');
+      console.log("✅ Account is active and funded.");
     } catch (e: any) {
       if (e.response?.status === 404) {
-        console.log('⚠️ Account not found. Asking Friendbot to fund it...');
+        console.log("⚠️ Account not found. Asking Friendbot to fund it...");
         try {
           await fetch(`https://friendbot.stellar.org?addr=${publicKey}`);
-          console.log('🎉 Account funded successfully!');
+          console.log("🎉 Account funded successfully!");
         } catch (fundError) {
-          console.error('❌ Failed to fund account:', fundError);
+          console.error("❌ Failed to fund account:", fundError);
         }
       } else {
-        console.error('❌ Error checking account:', e.message);
+        console.error("❌ Error checking account:", e.message);
       }
     }
   }
@@ -46,6 +46,35 @@ export class StellarService {
       return true;
     } catch (error) {
       return false;
+    }
+  }
+
+  async verifyTransaction(
+    txHash: string,
+    expectedHash: string,
+  ): Promise<{ valid: boolean; timestamp: string; sender: string }> {
+    console.log(`🔍 Verifying TX: ${txHash}`);
+
+    try {
+      const tx = await this.server.transactions().transaction(txHash).call();
+
+      const memoType = tx.memo_type;
+      const memoValue = tx.memo;
+      const timestamp = tx.created_at;
+
+      const onChainHashHex = Buffer.from(memoValue, "base64").toString("hex");
+
+      const isValid =
+        onChainHashHex === expectedHash || memoValue === expectedHash; // Check both just in case
+
+      return {
+        valid: isValid,
+        timestamp: timestamp,
+        sender: tx.source_account,
+      };
+    } catch (error: any) {
+      console.error("❌ Verification failed:", error.message);
+      throw new Error("Transaction not found or network error");
     }
   }
 }
