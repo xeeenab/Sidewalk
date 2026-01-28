@@ -1,5 +1,5 @@
-import dotenv from "dotenv";
-import { StellarService } from "@sidewalk/stellar";
+import dotenv from 'dotenv';
+import { StellarService } from '@sidewalk/stellar';
 import {
   Keypair,
   Horizon,
@@ -7,48 +7,48 @@ import {
   Networks,
   Operation,
   Asset,
-} from "@stellar/stellar-sdk";
+} from '@stellar/stellar-sdk';
 
 dotenv.config();
 
 const run = async () => {
   const distributorSecret = process.env.STELLAR_SECRET_KEY;
   const issuerSecret = process.env.ISSUER_SECRET_KEY;
-  const assetCode = process.env.ASSET_CODE || "SIDEWALK";
-  const SUPPLY = "1000000";
+  const assetCode = process.env.ASSET_CODE || 'SIDEWALK';
+  const SUPPLY = '1000000';
 
   if (!distributorSecret || !issuerSecret) {
-    throw new Error("Missing keys in .env");
+    throw new Error('Missing keys in .env');
   }
 
   const distributorService = new StellarService(distributorSecret);
   const issuerKeypair = Keypair.fromSecret(issuerSecret);
-  const server = new Horizon.Server("https://horizon-testnet.stellar.org");
+  const server = new Horizon.Server('https://horizon-testnet.stellar.org');
 
   console.log(`🚀 Starting Token Issuance: ${assetCode}`);
   console.log(`Issuer: ${issuerKeypair.publicKey()}`);
   console.log(`Distributor: ${distributorService.getPublicKey()}`);
 
   try {
-    console.log("💰 Funding Issuer account...");
+    console.log('💰 Funding Issuer account...');
     try {
       await fetch(
         `https://friendbot.stellar.org?addr=${issuerKeypair.publicKey()}`,
       );
-      console.log("✅ Issuer funded.");
-    } catch (e) {
-      console.log("ℹ️ Issuer likely already funded.");
+      console.log('✅ Issuer funded.');
+    } catch {
+      console.log('ℹ️ Issuer likely already funded.');
     }
 
     await distributorService.changeTrust(assetCode, issuerKeypair.publicKey());
 
-    console.log("🖨️ Minting tokens...");
+    console.log('🖨️ Minting tokens...');
 
     const issuerAccount = await server.loadAccount(issuerKeypair.publicKey());
     const asset = new Asset(assetCode, issuerKeypair.publicKey());
 
     const tx = new TransactionBuilder(issuerAccount, {
-      fee: "100",
+      fee: '100',
       networkPassphrase: Networks.TESTNET,
     })
       .addOperation(
@@ -69,10 +69,11 @@ const run = async () => {
     console.log(
       `View on Explorer: https://stellar.expert/explorer/testnet/asset/${assetCode}-${issuerKeypair.publicKey()}`,
     );
-  } catch (error: any) {
+  } catch (error) {
+    const err = error as any;
     console.error(
-      "❌ Error:",
-      error.response?.data?.extras?.result_codes || error.message,
+      '❌ Error:',
+      err.response?.data?.extras?.result_codes || err.message,
     );
   }
 };
