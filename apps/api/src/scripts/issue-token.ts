@@ -11,6 +11,17 @@ import {
 
 dotenv.config();
 
+interface StellarError {
+  message: string;
+  response?: {
+    data?: {
+      extras?: {
+        result_codes?: unknown;
+      };
+    };
+  };
+}
+
 const run = async () => {
   const distributorSecret = process.env.STELLAR_SECRET_KEY;
   const issuerSecret = process.env.ISSUER_SECRET_KEY;
@@ -70,7 +81,7 @@ const run = async () => {
       `View on Explorer: https://stellar.expert/explorer/testnet/asset/${assetCode}-${issuerKeypair.publicKey()}`,
     );
   } catch (error) {
-    const err = error as any;
+    const err = error as StellarError;
     console.error(
       '❌ Error:',
       err.response?.data?.extras?.result_codes || err.message,
