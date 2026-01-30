@@ -11,14 +11,14 @@ export const createReport = async (req: Request, res: Response) => {
     }
 
     const hash = crypto.createHash("sha256").update(description).digest("hex");
-
     const txHash = await stellarService.anchorHash(hash);
 
     res.status(201).json({
       message: "Report created and anchored",
       content_hash: hash,
       stellar_tx: txHash,
-      explorer_url: `https://stellar.expert/explorer/testnet/tx/${txHash}`,
+      // 👇 UPDATED: Uses shared helper
+      explorer_url: stellarService.getExplorerUrl(txHash),
     });
   } catch (error) {
     console.error(error);
@@ -37,12 +37,7 @@ export const updateReportStatus = async (req: Request, res: Response) => {
     }
 
     const dataToHash = `${originalTxHash}:${status}:${evidence || ""}`;
-
-    const statusHash = crypto
-      .createHash("sha256")
-      .update(dataToHash)
-      .digest("hex");
-
+    const statusHash = crypto.createHash("sha256").update(dataToHash).digest("hex");
     const statusTxHash = await stellarService.anchorHash(statusHash);
 
     res.json({
@@ -50,7 +45,8 @@ export const updateReportStatus = async (req: Request, res: Response) => {
       status: status,
       original_report_tx: originalTxHash,
       status_update_tx: statusTxHash,
-      explorer_url: `https://stellar.expert/explorer/testnet/tx/${statusTxHash}`,
+      // 👇 UPDATED: Uses shared helper
+      explorer_url: stellarService.getExplorerUrl(statusTxHash),
     });
   } catch (error) {
     console.error(error);
@@ -68,11 +64,7 @@ export const verifyReport = async (req: Request, res: Response) => {
         .json({ error: "txHash and originalDescription are required" });
     }
 
-    const expectedHash = crypto
-      .createHash("sha256")
-      .update(originalDescription)
-      .digest("hex");
-
+    const expectedHash = crypto.createHash("sha256").update(originalDescription).digest("hex");
     const result = await stellarService.verifyTransaction(txHash, expectedHash);
 
     if (result.valid) {
@@ -86,8 +78,7 @@ export const verifyReport = async (req: Request, res: Response) => {
     } else {
       res.status(409).json({
         success: false,
-        message:
-          "❌ Verification Failed. The content has been altered or does not match the record.",
+        message: "❌ Verification Failed. The content has been altered or does not match the record.",
         timestamp: result.timestamp,
       });
     }
@@ -108,29 +99,21 @@ export const verifyStatus = async (req: Request, res: Response) => {
     }
 
     const dataToHash = `${originalTxHash}:${status}:${evidence || ""}`;
-    const expectedHash = crypto
-      .createHash("sha256")
-      .update(dataToHash)
-      .digest("hex");
+    const expectedHash = crypto.createHash("sha256").update(dataToHash).digest("hex");
 
-    const result = await stellarService.verifyTransaction(
-      statusTxHash,
-      expectedHash,
-    );
+    const result = await stellarService.verifyTransaction(statusTxHash, expectedHash);
 
     if (result.valid) {
       res.json({
         success: true,
-        message:
-          "✅ Chain Verified! This status update belongs to that report.",
+        message: "✅ Chain Verified! This status update belongs to that report.",
         timestamp: result.timestamp,
         signer: result.sender,
       });
     } else {
       res.status(409).json({
         success: false,
-        message:
-          "❌ Broken Chain. The status update does not match the provided report or data.",
+        message: "❌ Broken Chain. The status update does not match the provided report or data.",
       });
     }
   } catch (error) {

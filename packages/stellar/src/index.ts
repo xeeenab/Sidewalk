@@ -7,19 +7,19 @@ import {
   Asset,
   Memo,
   Transaction,
-  FeeBumpTransaction,
-} from '@stellar/stellar-sdk';
+  FeeBumpTransaction
+} from "@stellar/stellar-sdk";
 
 export class StellarService {
   private server: Horizon.Server;
   private keypair: Keypair;
 
   constructor(secretKey: string) {
-    this.server = new Horizon.Server('https://horizon-testnet.stellar.org');
+    this.server = new Horizon.Server("https://horizon-testnet.stellar.org");
     try {
       this.keypair = Keypair.fromSecret(secretKey);
     } catch (error) {
-      throw new Error('Invalid Stellar Secret Key provided.');
+      throw new Error("Invalid Stellar Secret Key provided.");
     }
   }
 
@@ -27,6 +27,7 @@ export class StellarService {
     return this.keypair.publicKey();
   }
 
+  // 👇 ISSUE 8: New Helper for Explorer URLs
   getExplorerUrl(txHash: string): string {
     return `https://stellar.expert/explorer/testnet/tx/${txHash}`;
   }
@@ -36,14 +37,18 @@ export class StellarService {
     console.log(`🔍 Checking funds for: ${publicKey}`);
     try {
       await this.server.loadAccount(publicKey);
-      console.log('✅ Account is active and funded.');
+      console.log("✅ Account is active and funded.");
     } catch (e: any) {
       if (e.response?.status === 404) {
-        console.log('⚠️ Account not found. Asking Friendbot to fund it...');
-        await fetch(`https://friendbot.stellar.org?addr=${publicKey}`);
-        console.log('🎉 Account funded successfully!');
+        console.log("⚠️ Account not found. Asking Friendbot to fund it...");
+        try {
+          await fetch(`https://friendbot.stellar.org?addr=${publicKey}`);
+          console.log("🎉 Account funded successfully!");
+        } catch (fundError) {
+          console.error("❌ Failed to fund account:", fundError);
+        }
       } else {
-        console.error('❌ Error checking account:', e.message);
+        console.error("❌ Error checking account:", e.message);
       }
     }
   }
@@ -60,16 +65,15 @@ export class StellarService {
   async anchorHash(dataHash: string): Promise<string> {
     console.log(`⚓ Anchoring hash: ${dataHash}`);
     const account = await this.server.loadAccount(this.getPublicKey());
-
     const tx = new TransactionBuilder(account, {
-      fee: '100',
+      fee: "100",
       networkPassphrase: Networks.TESTNET,
     })
       .addOperation(
         Operation.payment({
           destination: this.getPublicKey(),
           asset: Asset.native(),
-          amount: '0.00001',
+          amount: "0.00001",
         }),
       )
       .addMemo(Memo.hash(dataHash))
@@ -77,36 +81,41 @@ export class StellarService {
       .build();
 
     tx.sign(this.keypair);
-    const result = await this.server.submitTransaction(tx);
-    console.log(`✅ Hash anchored! TX: ${result.hash}`);
-    return result.hash;
+
+    try {
+      const result = await this.server.submitTransaction(tx);
+      console.log(`✅ Hash anchored! TX: ${result.hash}`);
+      return result.hash;
+    } catch (error: any) {
+      console.error(
+        "❌ Anchoring failed:",
+        error.response?.data?.extras?.result_codes || error.message,
+      );
+      throw new Error("Failed to anchor hash on Stellar.");
+    }
   }
 
-  async verifyTransaction(
-    txHash: string,
-    expectedHash: string,
-  ): Promise<{ valid: boolean; timestamp: string; sender: string }> {
+  async verifyTransaction(txHash: string, expectedHash: string): Promise<{ valid: boolean; timestamp: string; sender: string }> {
     console.log(`🔍 Verifying TX: ${txHash}`);
     try {
       const tx = await this.server.transactions().transaction(txHash).call();
-
-      const memoValue = tx.memo || '';
+      
+      const memoValue = tx.memo || ''; 
       const timestamp = tx.created_at;
-
+      
       let onChainHashHex = '';
       if (tx.memo_type === 'hash' && memoValue) {
-        onChainHashHex = Buffer.from(memoValue, 'base64').toString('hex');
+         onChainHashHex = Buffer.from(memoValue, 'base64').toString('hex');
       } else {
-        onChainHashHex = memoValue;
+         onChainHashHex = memoValue;
       }
 
-      const isValid =
-        onChainHashHex === expectedHash || memoValue === expectedHash;
+      const isValid = (onChainHashHex === expectedHash || memoValue === expectedHash);
 
       return {
         valid: isValid,
         timestamp: timestamp,
-        sender: tx.source_account,
+        sender: tx.source_account
       };
     } catch (error: any) {
       console.error('❌ Verification failed:', error.message);
@@ -114,18 +123,14 @@ export class StellarService {
     }
   }
 
-  async changeTrust(
-    assetCode: string,
-    issuerPublicKey: string,
-    limit: string = '10000000',
-  ): Promise<string> {
+  async changeTrust(assetCode: string, issuerPublicKey: string, limit: string = '10000000'): Promise<string> {
     console.log(`🤝 Establishing trust for ${assetCode}...`);
     const account = await this.server.loadAccount(this.getPublicKey());
     const asset = new Asset(assetCode, issuerPublicKey);
 
     const tx = new TransactionBuilder(account, {
       fee: '100',
-      networkPassphrase: Networks.TESTNET,
+      networkPassphrase: Networks.TESTNET
     })
       .addOperation(Operation.changeTrust({ asset: asset, limit: limit }))
       .setTimeout(30)
@@ -136,36 +141,25 @@ export class StellarService {
     return result.hash;
   }
 
-  async checkTrustline(
-    userPublicKey: string,
-    assetCode: string,
-    issuerPublicKey: string,
-  ): Promise<boolean> {
+  async checkTrustline(userPublicKey: string, assetCode: string, issuerPublicKey: string): Promise<boolean> {
     try {
       const account = await this.server.loadAccount(userPublicKey);
-      return account.balances.some(
-        (balance: any) =>
-          balance.asset_code === assetCode &&
-          balance.asset_issuer === issuerPublicKey,
+      return account.balances.some((balance: any) => 
+        balance.asset_code === assetCode && balance.asset_issuer === issuerPublicKey
       );
     } catch (error) {
       return false;
     }
   }
 
-  async sendAsset(
-    destination: string,
-    amount: string,
-    assetCode: string,
-    issuerPublicKey: string,
-  ): Promise<string> {
+  async sendAsset(destination: string, amount: string, assetCode: string, issuerPublicKey: string): Promise<string> {
     console.log(`💸 Sending ${amount} ${assetCode} to ${destination}...`);
     const account = await this.server.loadAccount(this.getPublicKey());
     const asset = new Asset(assetCode, issuerPublicKey);
 
     const tx = new TransactionBuilder(account, {
       fee: '100',
-      networkPassphrase: Networks.TESTNET,
+      networkPassphrase: Networks.TESTNET
     })
       .addOperation(Operation.payment({ destination, asset, amount }))
       .setTimeout(30)
@@ -186,20 +180,23 @@ export class StellarService {
     }
 
     if (innerTx instanceof FeeBumpTransaction) {
-      throw new Error(
-        'Cannot sponsor a transaction that is already a fee bump',
-      );
+      throw new Error('Cannot sponsor a transaction that is already a fee bump');
     }
 
     const feeBumpTx = TransactionBuilder.buildFeeBumpTransaction(
       this.keypair,
-      innerTx as any,
-      '10000' as any,
-      Networks.TESTNET,
+      innerTx as Transaction,
+      '10000',
+      Networks.TESTNET
     );
 
     feeBumpTx.sign(this.keypair);
-    const result = await this.server.submitTransaction(feeBumpTx);
-    return result.hash;
+    try {
+      const result = await this.server.submitTransaction(feeBumpTx);
+      return result.hash;
+    } catch (error: any) {
+      console.error('❌ Sponsorship Failed:', error.response?.data?.extras?.result_codes || error.message);
+      throw new Error('Failed to sponsor transaction');
+    }
   }
 }
