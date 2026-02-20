@@ -10,6 +10,8 @@ What sets Sidewalk apart is its **Stellar-powered accountability layer**. By anc
 
 > **If it’s on-chain, it can’t be swept under the rug.**
 
+[SIDEWALK FIGMA](https://www.figma.com/design/cH6GFhWhtgxzESR8pedNGl/Sidewalk?node-id=0-1&t=n3OH48FSO4NjbBf3-1)
+
 ---
 
 ## 🌍 Why Sidewalk?
