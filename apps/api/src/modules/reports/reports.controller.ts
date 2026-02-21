@@ -3,6 +3,12 @@ import crypto from 'crypto';
 import { stellarService } from '../../config/stellar';
 import { AppError } from '../../core/errors/app-error';
 import { logger } from '../../core/logging/logger';
+import {
+  CreateReportDTO,
+  UpdateReportStatusDTO,
+  VerifyReportDTO,
+  VerifyStatusDTO,
+} from './reports.schemas';
 
 export const createReport = async (
   req: Request,
@@ -10,13 +16,7 @@ export const createReport = async (
   next: NextFunction,
 ) => {
   try {
-    const { description } = req.body as { description?: string };
-
-    if (!description) {
-      return next(
-        new AppError('Description is required', 400, 'MISSING_DESCRIPTION'),
-      );
-    }
+    const { description } = req.body as CreateReportDTO;
 
     const contentHash = crypto
       .createHash('sha256')
@@ -41,21 +41,7 @@ export const updateReportStatus = async (
   next: NextFunction,
 ) => {
   try {
-    const { originalTxHash, status, evidence } = req.body as {
-      originalTxHash?: string;
-      status?: string;
-      evidence?: string;
-    };
-
-    if (!originalTxHash || !status) {
-      return next(
-        new AppError(
-          'originalTxHash and status are required',
-          400,
-          'MISSING_REQUIRED_FIELDS',
-        ),
-      );
-    }
+    const { originalTxHash, status, evidence } = req.body as UpdateReportStatusDTO;
 
     const dataToHash = `${originalTxHash}:${status}:${evidence ?? ''}`;
     const statusHash = crypto
@@ -82,20 +68,7 @@ export const verifyReport = async (
   next: NextFunction,
 ) => {
   try {
-    const { txHash, originalDescription } = req.body as {
-      txHash?: string;
-      originalDescription?: string;
-    };
-
-    if (!txHash || !originalDescription) {
-      return next(
-        new AppError(
-          'txHash and originalDescription are required',
-          400,
-          'MISSING_REQUIRED_FIELDS',
-        ),
-      );
-    }
+    const { txHash, originalDescription } = req.body as VerifyReportDTO;
 
     const expectedHash = crypto
       .createHash('sha256')
@@ -136,22 +109,8 @@ export const verifyStatus = async (
   next: NextFunction,
 ) => {
   try {
-    const { statusTxHash, originalTxHash, status, evidence } = req.body as {
-      statusTxHash?: string;
-      originalTxHash?: string;
-      status?: string;
-      evidence?: string;
-    };
-
-    if (!statusTxHash || !originalTxHash || !status) {
-      return next(
-        new AppError(
-          'All fields are required to verify the chain',
-          400,
-          'MISSING_REQUIRED_FIELDS',
-        ),
-      );
-    }
+    const { statusTxHash, originalTxHash, status, evidence } =
+      req.body as VerifyStatusDTO;
 
     const dataToHash = `${originalTxHash}:${status}:${evidence ?? ''}`;
     const expectedHash = crypto
