@@ -185,8 +185,8 @@ export class StellarService {
 
     const feeBumpTx = TransactionBuilder.buildFeeBumpTransaction(
       this.keypair,
-      innerTx as Transaction,
       '10000',
+      innerTx as Transaction,
       Networks.TESTNET
     );
 
