@@ -1,189 +1,189 @@
-import { Request, Response } from "express";
-import { stellarService } from "../../config/stellar";
-import crypto from "crypto";
-import { ReportAnchorModel } from "./report.anchor.model";
-import { createDeterministicSnapshot, sha256Hex } from "./report.snapshot.util";
+import { NextFunction, Request, Response } from 'express';
+import crypto from 'crypto';
+import { stellarService } from '../../config/stellar';
+import { AppError } from '../../core/errors/app-error';
+import { logger } from '../../core/logging/logger';
 
-const MAX_ANCHOR_ATTEMPTS = 3;
-const RETRY_DELAY_MS = [250, 750];
-
-const sleep = async (ms: number): Promise<void> => {
-  await new Promise((resolve) => setTimeout(resolve, ms));
-};
-
-export const createReport = async (req: Request, res: Response) => {
+export const createReport = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
-    const { description } = req.body;
+    const { description } = req.body as { description?: string };
 
     if (!description) {
-      return res.status(400).json({ error: "Description is required" });
+      return next(
+        new AppError('Description is required', 400, 'MISSING_DESCRIPTION'),
+      );
     }
 
-    const snapshot = createDeterministicSnapshot(req.body);
-    const hash = sha256Hex(snapshot);
+    const contentHash = crypto
+      .createHash('sha256')
+      .update(description, 'utf8')
+      .digest('hex');
+    const txHash = await stellarService.anchorHash(contentHash);
 
-    const report = await ReportAnchorModel.create({
-      snapshot,
-      snapshot_hash: hash,
-      anchor_status: "PENDING",
-      anchor_attempts: 0,
-    });
-
-    let txHash: string | null = null;
-
-    for (let attempt = 1; attempt <= MAX_ANCHOR_ATTEMPTS; attempt += 1) {
-      try {
-        txHash = await stellarService.anchorHash(hash);
-
-        await ReportAnchorModel.updateOne(
-          { _id: report._id },
-          {
-            $set: {
-              stellar_tx_hash: txHash,
-              anchor_status: "ANCHORED",
-              anchor_last_error: null,
-            },
-            $inc: { anchor_attempts: 1 },
-          },
-        );
-        break;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown anchoring error";
-        await ReportAnchorModel.updateOne(
-          { _id: report._id },
-          {
-            $set: {
-              anchor_status: "FAILED",
-              anchor_last_error: message,
-            },
-            $inc: { anchor_attempts: 1 },
-          },
-        );
-
-        if (attempt < MAX_ANCHOR_ATTEMPTS) {
-          await sleep(RETRY_DELAY_MS[attempt - 1] ?? 1000);
-        }
-      }
-    }
-
-    if (!txHash) {
-      return res.status(202).json({
-        message: "Report created, anchoring retries exhausted",
-        report_id: report._id,
-        content_hash: hash,
-        anchor_status: "FAILED",
-        anchor_attempts: MAX_ANCHOR_ATTEMPTS,
-        error: "anchoring_failed",
-      });
-    }
-
-    res.status(201).json({
-      message: "Report created and anchored",
-      report_id: report._id,
-      content_hash: hash,
+    return res.status(201).json({
+      message: 'Report created and anchored',
+      content_hash: contentHash,
       stellar_tx: txHash,
-      anchor_status: "ANCHORED",
-      // 👇 UPDATED: Uses shared helper
       explorer_url: stellarService.getExplorerUrl(txHash),
     });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Failed to create report" });
+    return next(error);
   }
 };
 
-export const updateReportStatus = async (req: Request, res: Response) => {
+export const updateReportStatus = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
-    const { originalTxHash, status, evidence } = req.body;
+    const { originalTxHash, status, evidence } = req.body as {
+      originalTxHash?: string;
+      status?: string;
+      evidence?: string;
+    };
 
     if (!originalTxHash || !status) {
-      return res
-        .status(400)
-        .json({ error: "originalTxHash and status are required" });
+      return next(
+        new AppError(
+          'originalTxHash and status are required',
+          400,
+          'MISSING_REQUIRED_FIELDS',
+        ),
+      );
     }
 
-    const dataToHash = `${originalTxHash}:${status}:${evidence || ""}`;
-    const statusHash = crypto.createHash("sha256").update(dataToHash).digest("hex");
+    const dataToHash = `${originalTxHash}:${status}:${evidence ?? ''}`;
+    const statusHash = crypto
+      .createHash('sha256')
+      .update(dataToHash, 'utf8')
+      .digest('hex');
     const statusTxHash = await stellarService.anchorHash(statusHash);
 
-    res.json({
-      message: "Status updated and anchored",
-      status: status,
+    return res.status(200).json({
+      message: 'Status updated and anchored',
+      status,
       original_report_tx: originalTxHash,
       status_update_tx: statusTxHash,
-      // 👇 UPDATED: Uses shared helper
       explorer_url: stellarService.getExplorerUrl(statusTxHash),
     });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Failed to update status" });
+    return next(error);
   }
 };
 
-export const verifyReport = async (req: Request, res: Response) => {
+export const verifyReport = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
-    const { txHash, originalDescription } = req.body;
+    const { txHash, originalDescription } = req.body as {
+      txHash?: string;
+      originalDescription?: string;
+    };
 
     if (!txHash || !originalDescription) {
-      return res
-        .status(400)
-        .json({ error: "txHash and originalDescription are required" });
+      return next(
+        new AppError(
+          'txHash and originalDescription are required',
+          400,
+          'MISSING_REQUIRED_FIELDS',
+        ),
+      );
     }
 
-    const expectedHash = crypto.createHash("sha256").update(originalDescription).digest("hex");
+    const expectedHash = crypto
+      .createHash('sha256')
+      .update(originalDescription, 'utf8')
+      .digest('hex');
     const result = await stellarService.verifyTransaction(txHash, expectedHash);
 
-    if (result.valid) {
-      res.json({
-        success: true,
-        message: "✅ Content Verified! It matches the on-chain record.",
-        timestamp: result.timestamp,
-        signer: result.sender,
-        on_chain_hash: expectedHash,
-      });
-    } else {
-      res.status(409).json({
+    if (!result.valid) {
+      return res.status(409).json({
         success: false,
-        message: "❌ Verification Failed. The content has been altered or does not match the record.",
+        message:
+          'Verification failed. The content has been altered or does not match the record.',
         timestamp: result.timestamp,
       });
     }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Content verified. It matches the on-chain record.',
+      timestamp: result.timestamp,
+      signer: result.sender,
+      on_chain_hash: expectedHash,
+    });
   } catch (error) {
-    console.error(error);
-    res.status(404).json({ error: "Transaction not found" });
+    logger.warn('Report verification failed', {
+      txHash: (req.body as { txHash?: string })?.txHash,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return next(
+      new AppError('Transaction not found', 404, 'TRANSACTION_NOT_FOUND'),
+    );
   }
 };
 
-export const verifyStatus = async (req: Request, res: Response) => {
+export const verifyStatus = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
-    const { statusTxHash, originalTxHash, status, evidence } = req.body;
+    const { statusTxHash, originalTxHash, status, evidence } = req.body as {
+      statusTxHash?: string;
+      originalTxHash?: string;
+      status?: string;
+      evidence?: string;
+    };
 
     if (!statusTxHash || !originalTxHash || !status) {
-      return res
-        .status(400)
-        .json({ error: "All fields are required to verify the chain" });
+      return next(
+        new AppError(
+          'All fields are required to verify the chain',
+          400,
+          'MISSING_REQUIRED_FIELDS',
+        ),
+      );
     }
 
-    const dataToHash = `${originalTxHash}:${status}:${evidence || ""}`;
-    const expectedHash = crypto.createHash("sha256").update(dataToHash).digest("hex");
+    const dataToHash = `${originalTxHash}:${status}:${evidence ?? ''}`;
+    const expectedHash = crypto
+      .createHash('sha256')
+      .update(dataToHash, 'utf8')
+      .digest('hex');
+    const result = await stellarService.verifyTransaction(
+      statusTxHash,
+      expectedHash,
+    );
 
-    const result = await stellarService.verifyTransaction(statusTxHash, expectedHash);
-
-    if (result.valid) {
-      res.json({
-        success: true,
-        message: "✅ Chain Verified! This status update belongs to that report.",
-        timestamp: result.timestamp,
-        signer: result.sender,
-      });
-    } else {
-      res.status(409).json({
+    if (!result.valid) {
+      return res.status(409).json({
         success: false,
-        message: "❌ Broken Chain. The status update does not match the provided report or data.",
+        message:
+          'Broken chain. The status update does not match the provided report data.',
       });
     }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Chain verified. This status update belongs to that report.',
+      timestamp: result.timestamp,
+      signer: result.sender,
+    });
   } catch (error) {
-    console.error(error);
-    res.status(404).json({ error: "Transaction not found" });
+    logger.warn('Status verification failed', {
+      statusTxHash: (req.body as { statusTxHash?: string })?.statusTxHash,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return next(
+      new AppError('Transaction not found', 404, 'TRANSACTION_NOT_FOUND'),
+    );
   }
 };
