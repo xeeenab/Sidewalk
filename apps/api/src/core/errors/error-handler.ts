@@ -108,7 +108,8 @@ export const notFoundHandler: RequestHandler = (req, _res, next) => {
   next(new AppError(`Route not found: ${req.method} ${req.originalUrl}`, 404, "NOT_FOUND"));
 };
 
-export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
+export const errorHandler: ErrorRequestHandler = (err, req, res, next) => {
+  void next;
   const formatted = formatError(err);
 
   logger.error("Unhandled request error", {
