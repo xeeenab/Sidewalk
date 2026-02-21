@@ -1,6 +1,15 @@
 import { Request, Response } from "express";
 import { stellarService } from "../../config/stellar";
 import crypto from "crypto";
+import { ReportModel } from "./report.model";
+import { buildDeterministicSnapshot, hashSnapshot } from "./reports.snapshot";
+
+const MAX_ANCHOR_ATTEMPTS = 3;
+const ANCHOR_RETRY_DELAYS_MS = [250, 750];
+
+const delay = async (ms: number): Promise<void> => {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+};
 
 export const createReport = async (req: Request, res: Response) => {
   try {
@@ -10,13 +19,71 @@ export const createReport = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Description is required" });
     }
 
-    const hash = crypto.createHash("sha256").update(description).digest("hex");
-    const txHash = await stellarService.anchorHash(hash);
+    const snapshot = buildDeterministicSnapshot(req.body);
+    const hash = hashSnapshot(snapshot);
+
+    const report = await ReportModel.create({
+      snapshot,
+      snapshot_hash: hash,
+      anchor_status: "PENDING",
+      anchor_attempts: 0,
+    });
+
+    let txHash: string | null = null;
+    let lastError: string | null = null;
+
+    for (let attempt = 1; attempt <= MAX_ANCHOR_ATTEMPTS; attempt += 1) {
+      try {
+        txHash = await stellarService.anchorHash(hash);
+        lastError = null;
+        await ReportModel.updateOne(
+          { _id: report._id },
+          {
+            $set: {
+              stellar_tx_hash: txHash,
+              anchor_status: "ANCHORED",
+              anchor_last_error: null,
+            },
+            $inc: { anchor_attempts: 1 },
+          },
+        );
+        break;
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : "Unknown anchoring error";
+        await ReportModel.updateOne(
+          { _id: report._id },
+          {
+            $set: {
+              anchor_status: "FAILED",
+              anchor_last_error: lastError,
+            },
+            $inc: { anchor_attempts: 1 },
+          },
+        );
+
+        if (attempt < MAX_ANCHOR_ATTEMPTS) {
+          await delay(ANCHOR_RETRY_DELAYS_MS[attempt - 1] ?? 1000);
+        }
+      }
+    }
+
+    if (!txHash) {
+      return res.status(202).json({
+        message: "Report created, anchoring retries exhausted",
+        report_id: report._id,
+        content_hash: hash,
+        anchor_status: "FAILED",
+        anchor_attempts: MAX_ANCHOR_ATTEMPTS,
+        error: "anchoring_failed",
+      });
+    }
 
     res.status(201).json({
       message: "Report created and anchored",
+      report_id: report._id,
       content_hash: hash,
       stellar_tx: txHash,
+      anchor_status: "ANCHORED",
       // 👇 UPDATED: Uses shared helper
       explorer_url: stellarService.getExplorerUrl(txHash),
     });
