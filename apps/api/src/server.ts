@@ -5,6 +5,7 @@ import { connectDB } from "./config/db";
 import { getHealth } from "./modules/health/health.controller";
 import { stellarService } from "./config/stellar";
 import reportsRoutes from "./modules/reports/reports.routes";
+import authRoutes from "./modules/auth/auth.routes";
 import { logger } from "./core/logging/logger";
 import { requestLogger } from "./core/logging/request-logger.middleware";
 import { errorHandler, notFoundHandler } from "./core/errors/error-handler";
@@ -19,6 +20,7 @@ app.use(express.json());
 app.use(requestLogger);
 
 app.get("/api/health", getHealth);
+app.use("/api/auth", authRoutes);
 app.use("/api/reports", reportsRoutes);
 app.use(notFoundHandler);
 app.use(errorHandler);

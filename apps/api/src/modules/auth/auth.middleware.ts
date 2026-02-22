@@ -1,35 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
 import jwt, { JsonWebTokenError, TokenExpiredError } from 'jsonwebtoken';
-import { AppError } from '../../core/errors/app-error';
 import { AuthenticatedUser, ROLES, Role } from './auth.types';
-
-const toPem = (value: string) => value.replace(/\\n/g, '\n');
-
-const getJwtConfig = () => {
-  const privateKey = process.env.JWT_PRIVATE_KEY;
-  const publicKey = process.env.JWT_PUBLIC_KEY;
-  const secret = process.env.JWT_SECRET;
-
-  if (privateKey && publicKey) {
-    return {
-      algorithm: 'RS256' as const,
-      verificationKey: toPem(publicKey),
-    };
-  }
-
-  if (secret) {
-    return {
-      algorithm: 'HS256' as const,
-      verificationKey: secret,
-    };
-  }
-
-  throw new AppError(
-    'JWT configuration missing. Set JWT_PUBLIC_KEY/JWT_PRIVATE_KEY or JWT_SECRET',
-    500,
-    'JWT_CONFIG_MISSING',
-  );
-};
+import { getJwtConfig } from './auth.jwt';
 
 const parseBearerToken = (authorizationHeader?: string): string | null => {
   if (!authorizationHeader) {
@@ -45,6 +17,10 @@ const parseBearerToken = (authorizationHeader?: string): string | null => {
 };
 
 const normalizeUser = (payload: jwt.JwtPayload): AuthenticatedUser | null => {
+  if (payload.tokenType !== 'access') {
+    return null;
+  }
+
   const id = (payload.sub as string | undefined) ?? (payload.id as string | undefined);
   const role = payload.role as Role | undefined;
 
