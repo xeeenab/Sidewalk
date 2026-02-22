@@ -1,29 +1,30 @@
-import { Schema, model, type HydratedDocument } from "mongoose";
+import { Schema, model, type HydratedDocument } from 'mongoose';
 
-const REPORT_STATUSES = [
-  "PENDING",
-  "ACKNOWLEDGED",
-  "RESOLVED",
-  "REJECTED",
-  "ESCALATED",
+export const REPORT_STATUSES = [
+  'PENDING',
+  'ACKNOWLEDGED',
+  'RESOLVED',
+  'REJECTED',
+  'ESCALATED',
 ] as const;
 
-const REPORT_CATEGORIES = [
-  "INFRASTRUCTURE",
-  "SANITATION",
-  "SAFETY",
-  "UTILITIES",
-  "TRAFFIC",
-  "OTHER",
+export const REPORT_CATEGORIES = [
+  'INFRASTRUCTURE',
+  'SANITATION',
+  'SAFETY',
+  'LIGHTING',
+  'TRANSPORT',
+  'DRAINAGE',
+  'UTILITIES',
+  'TRAFFIC',
+  'OTHER',
 ] as const;
-
-const stripHtml = (value: string): string => value.replace(/<[^>]*>/g, "").trim();
 
 export type ReportStatus = (typeof REPORT_STATUSES)[number];
 export type ReportCategory = (typeof REPORT_CATEGORIES)[number];
 
-export type GeoPoint = {
-  type: "Point";
+export type ReportLocation = {
+  type: 'Point';
   coordinates: [number, number];
 };
 
@@ -32,34 +33,47 @@ export interface Report {
   description: string;
   status: ReportStatus;
   category: ReportCategory;
-  location: GeoPoint;
+  location: ReportLocation;
   stellar_tx_hash: string | null;
-  media_urls: string[];
   snapshot_hash: string | null;
+  media_urls: string[];
+  exif_verified: boolean;
+  exif_distance_meters: number | null;
+  integrity_flag: 'NORMAL' | 'SUSPICIOUS';
 }
+
+const stripHtml = (value: string): string =>
+  value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+
+const isValidLongitude = (value: number) =>
+  Number.isFinite(value) && value >= -180 && value <= 180;
+const isValidLatitude = (value: number) =>
+  Number.isFinite(value) && value >= -90 && value <= 90;
 
 const reportSchema = new Schema<Report>(
   {
     title: {
       type: String,
       required: true,
-      trim: true,
-      set: stripHtml,
-      minlength: 3,
-      maxlength: 120,
+      set: (value: string) => stripHtml(value),
+      validate: {
+        validator: (value: string) => value.length > 0,
+        message: 'title is required',
+      },
     },
     description: {
       type: String,
       required: true,
-      trim: true,
-      set: stripHtml,
-      minlength: 5,
-      maxlength: 5000,
+      set: (value: string) => stripHtml(value),
+      validate: {
+        validator: (value: string) => value.length > 0,
+        message: 'description is required',
+      },
     },
     status: {
       type: String,
       enum: REPORT_STATUSES,
-      default: "PENDING",
+      default: 'PENDING',
       required: true,
       index: true,
     },
@@ -72,32 +86,35 @@ const reportSchema = new Schema<Report>(
     location: {
       type: {
         type: String,
-        enum: ["Point"],
+        enum: ['Point'],
         required: true,
       },
       coordinates: {
         type: [Number],
         required: true,
-        validate: {
-          validator: (coordinates: number[]) => {
-            if (!Array.isArray(coordinates) || coordinates.length !== 2) {
-              return false;
-            }
-            const [lng, lat] = coordinates;
-            return (
-              Number.isFinite(lng) &&
-              Number.isFinite(lat) &&
-              lng >= -180 &&
-              lng <= 180 &&
-              lat >= -90 &&
-              lat <= 90
-            );
+        validate: [
+          {
+            validator: (coordinates: number[]) =>
+              Array.isArray(coordinates) && coordinates.length === 2,
+            message: 'location.coordinates must contain [longitude, latitude]',
           },
-          message: "location.coordinates must be [lng, lat] with valid ranges",
-        },
+          {
+            validator: (coordinates: number[]) =>
+              coordinates.length === 2 &&
+              isValidLongitude(coordinates[0]) &&
+              isValidLatitude(coordinates[1]),
+            message:
+              'location.coordinates must be valid and ordered [longitude, latitude]',
+          },
+        ],
       },
     },
     stellar_tx_hash: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    snapshot_hash: {
       type: String,
       default: null,
       index: true,
@@ -106,18 +123,29 @@ const reportSchema = new Schema<Report>(
       type: [String],
       default: [],
     },
-    snapshot_hash: {
-      type: String,
+    exif_verified: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    exif_distance_meters: {
+      type: Number,
       default: null,
+      index: true,
+    },
+    integrity_flag: {
+      type: String,
+      enum: ['NORMAL', 'SUSPICIOUS'],
+      default: 'NORMAL',
       index: true,
     },
   },
   { timestamps: true },
 );
 
-reportSchema.index({ location: "2dsphere" });
+reportSchema.index({ location: '2dsphere' });
 reportSchema.index({ status: 1, createdAt: -1 });
 
 export type ReportDocument = HydratedDocument<Report>;
 
-export const ReportModel = model<Report>("Report", reportSchema);
+export const ReportModel = model<Report>('Report', reportSchema);

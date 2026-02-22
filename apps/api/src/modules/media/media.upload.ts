@@ -1,8 +1,11 @@
 import { PassThrough, Transform, TransformCallback } from 'stream';
 import Busboy from 'busboy';
 import { NextFunction, Request, Response } from 'express';
+import * as exifr from 'exifr';
 import { AppError } from '../../core/errors/app-error';
 import { buildObjectKey, uploadStreamToS3 } from './media.s3';
+import { MediaUploadModel } from './media-upload.model';
+import { enqueueMediaProcessing } from './media.queue';
 
 const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
 
@@ -68,6 +71,29 @@ class MagicNumberValidator extends Transform {
   }
 }
 
+class ExifProbeCollector extends Transform {
+  private readonly maxBytes: number;
+  private collected = Buffer.alloc(0);
+
+  constructor(maxBytes: number) {
+    super();
+    this.maxBytes = maxBytes;
+  }
+
+  get buffer(): Buffer {
+    return this.collected;
+  }
+
+  override _transform(chunk: Buffer, _encoding: BufferEncoding, callback: TransformCallback): void {
+    if (this.collected.length < this.maxBytes) {
+      const remaining = this.maxBytes - this.collected.length;
+      this.collected = Buffer.concat([this.collected, chunk.subarray(0, remaining)]);
+    }
+
+    callback(null, chunk);
+  }
+}
+
 export const uploadMedia = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const contentType = req.headers['content-type'] ?? '';
@@ -96,6 +122,7 @@ export const uploadMedia = async (req: Request, res: Response, next: NextFunctio
       receivedFile = true;
 
       const validator = new MagicNumberValidator();
+      const exifCollector = new ExifProbeCollector(512 * 1024);
       const passThrough = new PassThrough();
 
       file.on('limit', () => {
@@ -110,7 +137,7 @@ export const uploadMedia = async (req: Request, res: Response, next: NextFunctio
         passThrough.destroy(new AppError('Unsupported media type', 415, 'UNSUPPORTED_MEDIA_TYPE'));
       });
 
-      file.pipe(validator).pipe(passThrough);
+      file.pipe(validator).pipe(exifCollector).pipe(passThrough);
 
       uploadPromise = new Promise<{ key: string; url: string }>((resolve, reject) => {
         validator.once('verified', () => {
@@ -121,7 +148,52 @@ export const uploadMedia = async (req: Request, res: Response, next: NextFunctio
           }
 
           const key = buildObjectKey(mime);
-          uploadStreamToS3(passThrough, mime, key).then(resolve).catch(reject);
+          uploadStreamToS3(passThrough, mime, key)
+            .then(async (uploaded) => {
+              let exifGps: { latitude: number; longitude: number } | null = null;
+
+              try {
+                const gps = await exifr.gps(exifCollector.buffer);
+                if (
+                  gps &&
+                  typeof gps.latitude === 'number' &&
+                  typeof gps.longitude === 'number'
+                ) {
+                  exifGps = {
+                    latitude: gps.latitude,
+                    longitude: gps.longitude,
+                  };
+                }
+              } catch {
+                exifGps = null;
+              }
+
+              await MediaUploadModel.updateOne(
+                { key: uploaded.key },
+                {
+                  $set: {
+                    key: uploaded.key,
+                    url: uploaded.url,
+                    mime,
+                    exif_gps: exifGps,
+                    exif_verified: Boolean(exifGps),
+                    processing_status: 'QUEUED',
+                    processing_error: null,
+                    optimized_format: null,
+                    optimized_url: null,
+                  },
+                },
+                { upsert: true },
+              );
+
+              await enqueueMediaProcessing({
+                key: uploaded.key,
+                url: uploaded.url,
+              });
+
+              resolve(uploaded);
+            })
+            .catch(reject);
         });
 
         validator.once('error', reject);
