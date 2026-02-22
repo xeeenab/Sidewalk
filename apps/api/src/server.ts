@@ -9,15 +9,18 @@ import authRoutes from "./modules/auth/auth.routes";
 import { logger } from "./core/logging/logger";
 import { requestLogger } from "./core/logging/request-logger.middleware";
 import { errorHandler, notFoundHandler } from "./core/errors/error-handler";
+import { tieredApiRateLimiter } from "./core/rate-limit/rate-limit.middleware";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+app.set("trust proxy", 1);
 app.use(cors());
 app.use(express.json());
 app.use(requestLogger);
+app.use("/api", tieredApiRateLimiter);
 
 app.get("/api/health", getHealth);
 app.use("/api/auth", authRoutes);

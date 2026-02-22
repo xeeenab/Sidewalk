@@ -7,6 +7,7 @@ import {
 } from './reports.controller';
 import { authenticateToken, requireRole } from '../auth/auth.middleware';
 import { validateRequest } from '../../core/validation/validate-request';
+import { stellarAnchoringRateLimiter } from '../../core/rate-limit/rate-limit.middleware';
 import {
   createReportBodySchema,
   updateReportStatusBodySchema,
@@ -20,6 +21,7 @@ router.post(
   '/',
   authenticateToken,
   requireRole(['CITIZEN', 'AGENCY_ADMIN']),
+  stellarAnchoringRateLimiter,
   validateRequest({ body: createReportBodySchema }),
   createReport,
 );
