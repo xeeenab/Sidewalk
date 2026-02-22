@@ -1,5 +1,4 @@
 import crypto from 'crypto';
-import Redis from 'ioredis';
 import { Request, Response, NextFunction } from 'express';
 import { verifyJwt } from '../../modules/auth/auth.jwt';
 import { logger } from '../logging/logger';
@@ -21,7 +20,38 @@ type SlidingWindowOptions = {
 };
 
 const redisUrl = process.env.REDIS_URL;
-const redis = redisUrl ? new Redis(redisUrl, { lazyConnect: true }) : null;
+type RedisLike = {
+  status?: string;
+  connect: () => Promise<void>;
+  eval: (
+    script: string,
+    numKeys: number,
+    key: string,
+    nowMs: string,
+    windowMs: string,
+    member: string,
+  ) => Promise<unknown>;
+};
+
+const loadRedisClient = (): RedisLike | null => {
+  if (!redisUrl) {
+    return null;
+  }
+
+  try {
+    const req = eval('require') as (name: string) => unknown;
+    const RedisCtor = req('ioredis') as new (
+      url: string,
+      options: { lazyConnect: boolean },
+    ) => RedisLike;
+    return new RedisCtor(redisUrl, { lazyConnect: true });
+  } catch {
+    logger.warn('ioredis package not found, using in-memory rate limiter fallback');
+    return null;
+  }
+};
+
+const redis = loadRedisClient();
 
 const memoryStore = new Map<string, number[]>();
 
