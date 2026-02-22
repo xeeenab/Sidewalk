@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   createReport,
+  getMapReports,
   verifyReport,
   updateReportStatus,
   verifyStatus,
@@ -10,12 +11,21 @@ import { validateRequest } from '../../core/validation/validate-request';
 import { stellarAnchoringRateLimiter } from '../../core/rate-limit/rate-limit.middleware';
 import {
   createReportBodySchema,
+  reportsMapQuerySchema,
   updateReportStatusBodySchema,
   verifyReportBodySchema,
   verifyStatusBodySchema,
 } from './reports.schemas';
 
 const router: Router = Router();
+
+router.get(
+  '/map',
+  authenticateToken,
+  requireRole(['CITIZEN', 'AGENCY_ADMIN']),
+  validateRequest({ query: reportsMapQuerySchema }),
+  getMapReports,
+);
 
 router.post(
   '/',

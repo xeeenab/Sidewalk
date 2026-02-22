@@ -5,6 +5,7 @@ import { AppError } from '../../core/errors/app-error';
 import { logger } from '../../core/logging/logger';
 import {
   CreateReportDTO,
+  ReportsMapQueryDTO,
   UpdateReportStatusDTO,
   VerifyReportDTO,
   VerifyStatusDTO,
@@ -144,5 +145,80 @@ export const verifyStatus = async (
     return next(
       new AppError('Transaction not found', 404, 'TRANSACTION_NOT_FOUND'),
     );
+  }
+};
+
+export const getMapReports = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const query = req.query as unknown as ReportsMapQueryDTO;
+
+    const projection = {
+      _id: 1,
+      location: 1,
+      status: 1,
+      category: 1,
+    } as const;
+
+    let mapPins: Array<{
+      _id: unknown;
+      location: { type: 'Point'; coordinates: [number, number] };
+      status: string;
+      category: string;
+    }> = [];
+
+    if ('radiusInMeters' in query) {
+      const { lat, lng, radiusInMeters } = query;
+      mapPins = await ReportModel.find(
+        {
+          location: {
+            $nearSphere: {
+              $geometry: {
+                type: 'Point',
+                coordinates: [lng, lat],
+              },
+              $maxDistance: radiusInMeters,
+            },
+          },
+        },
+        projection,
+      )
+        .lean()
+        .limit(5000)
+        .exec();
+    } else {
+      const { minLat, maxLat, minLng, maxLng } = query;
+      mapPins = await ReportModel.find(
+        {
+          location: {
+            $geoWithin: {
+              $box: [
+                [minLng, minLat],
+                [maxLng, maxLat],
+              ],
+            },
+          },
+        },
+        projection,
+      )
+        .lean()
+        .limit(5000)
+        .exec();
+    }
+
+    return res.status(200).json({
+      count: mapPins.length,
+      data: mapPins.map((pin) => ({
+        _id: String(pin._id),
+        location: pin.location,
+        status: pin.status,
+        category: pin.category,
+      })),
+    });
+  } catch (error) {
+    return next(error);
   }
 };
