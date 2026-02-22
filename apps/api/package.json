@@ -6,6 +6,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
+    "worker:media": "tsx src/scripts/media-worker.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test:integration": "tsx --test src/**/*.integration.test.ts"
@@ -18,12 +19,15 @@
     "@stellar/stellar-sdk": "^14.5.0",
     "bcryptjs": "^3.0.3",
     "busboy": "^1.6.0",
+    "bullmq": "^5.58.6",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
+    "exifr": "^7.1.3",
     "express": "^4.21.2",
     "ioredis": "^5.9.3",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.9.5",
+    "sharp": "^0.34.4",
     "zod": "^3.24.1"
   },
   "devDependencies": {

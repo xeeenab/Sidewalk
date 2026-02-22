@@ -1,7 +1,13 @@
 import { randomUUID } from 'crypto';
 import { Upload } from '@aws-sdk/lib-storage';
-import { PutObjectCommandInput, S3Client } from '@aws-sdk/client-s3';
+import {
+  GetObjectCommand,
+  PutObjectCommand,
+  PutObjectCommandInput,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { Readable } from 'stream';
+import sharp from 'sharp';
 import { AppError } from '../../core/errors/app-error';
 
 const bucket = process.env.S3_BUCKET;
@@ -80,4 +86,47 @@ export const uploadStreamToS3 = async (
     key: objectKey,
     url: buildObjectUrl(objectKey),
   };
+};
+
+const toBuffer = async (stream: Readable): Promise<Buffer> => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+};
+
+export const compressAndReplaceImage = async (objectKey: string): Promise<void> => {
+  const response = await client.send(
+    new GetObjectCommand({
+      Bucket: bucket,
+      Key: objectKey,
+    }),
+  );
+
+  if (!response.Body) {
+    throw new AppError('S3 object body missing during processing', 500, 'S3_PROCESSING_FAILED');
+  }
+
+  const originalBuffer = await toBuffer(response.Body as Readable);
+
+  // Re-encoding to WebP strips EXIF metadata by default.
+  const optimizedBuffer = await sharp(originalBuffer)
+    .resize({
+      width: 1920,
+      height: 1080,
+      fit: 'inside',
+      withoutEnlargement: true,
+    })
+    .webp({ quality: 80 })
+    .toBuffer();
+
+  await client.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: objectKey,
+      Body: optimizedBuffer,
+      ContentType: 'image/webp',
+    }),
+  );
 };

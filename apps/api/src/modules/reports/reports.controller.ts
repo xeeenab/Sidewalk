@@ -3,6 +3,8 @@ import crypto from 'crypto';
 import { stellarService } from '../../config/stellar';
 import { AppError } from '../../core/errors/app-error';
 import { logger } from '../../core/logging/logger';
+import { MediaUploadModel } from '../media/media-upload.model';
+import { ReportModel } from './report.model';
 import {
   CreateReportDTO,
   ReportsMapQueryDTO,
@@ -17,18 +19,73 @@ export const createReport = async (
   next: NextFunction,
 ) => {
   try {
-    const { description } = req.body as CreateReportDTO;
+    const { title, description, category, location, media_urls } =
+      req.body as CreateReportDTO;
+
+    const firstMediaUrl = media_urls[0];
+    const mediaUpload = firstMediaUrl
+      ? await MediaUploadModel.findOne({ url: firstMediaUrl }).lean()
+      : null;
+
+    let exifVerified = false;
+    let exifDistanceMeters: number | null = null;
+    let integrityFlag: 'NORMAL' | 'SUSPICIOUS' = 'NORMAL';
+
+    if (mediaUpload?.exif_gps?.latitude !== undefined && mediaUpload?.exif_gps?.longitude !== undefined) {
+      exifVerified = true;
+      const [reportLng, reportLat] = location.coordinates;
+      const exifLat = mediaUpload.exif_gps.latitude;
+      const exifLng = mediaUpload.exif_gps.longitude;
+
+      const toRad = (value: number) => (value * Math.PI) / 180;
+      const earthRadiusMeters = 6_371_000;
+      const dLat = toRad(exifLat - reportLat);
+      const dLng = toRad(exifLng - reportLng);
+      const lat1 = toRad(reportLat);
+      const lat2 = toRad(exifLat);
+
+      const haversine =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+      exifDistanceMeters =
+        2 * earthRadiusMeters * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+
+      if (exifDistanceMeters > 500) {
+        integrityFlag = 'SUSPICIOUS';
+      }
+    }
+
+    const report = await ReportModel.create({
+      title,
+      description,
+      category,
+      location,
+      media_urls,
+      stellar_tx_hash: null,
+      exif_verified: exifVerified,
+      exif_distance_meters: exifDistanceMeters,
+      integrity_flag: integrityFlag,
+    });
 
     const contentHash = crypto
       .createHash('sha256')
-      .update(description, 'utf8')
+      .update(
+        JSON.stringify({ title, description, category, location, media_urls }),
+        'utf8',
+      )
       .digest('hex');
     const txHash = await stellarService.anchorHash(contentHash);
 
+    await ReportModel.updateOne({ _id: report._id }, { $set: { stellar_tx_hash: txHash } });
+
     return res.status(201).json({
       message: 'Report created and anchored',
+      report_id: report._id,
       content_hash: contentHash,
       stellar_tx: txHash,
+      exif_verified: exifVerified,
+      exif_distance_meters: exifDistanceMeters,
+      integrity_flag: integrityFlag,
       explorer_url: stellarService.getExplorerUrl(txHash),
     });
   } catch (error) {

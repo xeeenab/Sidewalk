@@ -7,6 +7,7 @@ import { stellarService } from "./config/stellar";
 import reportsRoutes from "./modules/reports/reports.routes";
 import authRoutes from "./modules/auth/auth.routes";
 import mediaRoutes from "./modules/media/media.routes";
+import { startMediaProcessingWorker } from "./modules/media/media.queue";
 import { logger } from "./core/logging/logger";
 import { requestLogger } from "./core/logging/request-logger.middleware";
 import { errorHandler, notFoundHandler } from "./core/errors/error-handler";
@@ -36,6 +37,11 @@ const startServer = async () => {
 
     logger.info("Initializing Stellar service");
     await stellarService.ensureFunded();
+
+    if (process.env.ENABLE_MEDIA_WORKER !== "false") {
+      startMediaProcessingWorker();
+      logger.info("Media processing worker initialized");
+    }
 
     app.listen(PORT, () => {
       logger.info("Server started", { port: PORT });
