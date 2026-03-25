@@ -130,7 +130,7 @@ pnpm -r build
 
 ### 4. Configure Environment
 
-Set up the environment variables for the API.
+Set up the environment variables for the API and mobile app.
 
 ```bash
 # Create the .env file in the API folder
@@ -139,7 +139,14 @@ cp apps/api/.env.example apps/api/.env
 # Update apps/api/.env with your MongoDB URI (defaults to local)
 # MONGO_URI=mongodb://localhost:27017/sidewalk
 
+# Mobile can optionally read its API base URL from Expo public env
+cp apps/mobile/.env.example apps/mobile/.env
+# EXPO_PUBLIC_API_URL=http://localhost:5000
+
 ```
+
+The API now validates its runtime configuration through `apps/api/src/config/env.ts`.
+Module-specific config fails with actionable messages when JWT, Stellar, or S3 settings are missing.
 
 ---
 
