@@ -6,8 +6,11 @@ import { logger } from '../../core/logging/logger';
 import { MediaUploadModel } from '../media/media-upload.model';
 import { ReportModel } from './report.model';
 import { enqueueStellarAnchor } from './reports.anchor.queue';
+import { StatusUpdateModel } from './status-update.model';
 import {
   CreateReportDTO,
+  ReportDetailParamsDTO,
+  ReportMineQueryDTO,
   ReportsMapQueryDTO,
   UpdateReportStatusDTO,
   VerifyReportDTO,
@@ -73,6 +76,7 @@ export const createReport = async (
 
     const report = await ReportModel.create({
       reporter_user_id: req.user?.id ?? null,
+      district: req.user?.district ?? null,
       data_hash: contentHash,
       anchor_status: 'ANCHOR_QUEUED',
       anchor_attempts: 0,
@@ -118,7 +122,34 @@ export const updateReportStatus = async (
   next: NextFunction,
 ) => {
   try {
-    const { originalTxHash, status, evidence } = req.body as UpdateReportStatusDTO;
+    const { originalTxHash, reportId, status, evidence } = req.body as UpdateReportStatusDTO;
+
+    if (reportId) {
+      const report = await ReportModel.findById(reportId).lean();
+      if (!report) {
+        throw new AppError('Report not found', 404, 'REPORT_NOT_FOUND');
+      }
+
+      const isAdmin = req.user?.role === 'AGENCY_ADMIN';
+      const requesterDistrict = req.user?.district;
+      if (
+        isAdmin &&
+        requesterDistrict &&
+        report.district &&
+        report.district !== requesterDistrict
+      ) {
+        throw new AppError('Forbidden across districts', 403, 'FORBIDDEN');
+      }
+
+      await StatusUpdateModel.create({
+        reportId: report._id,
+        previousStatus: report.status,
+        nextStatus: status,
+        note: evidence,
+      });
+
+      await ReportModel.updateOne({ _id: report._id }, { $set: { status } });
+    }
 
     const dataToHash = `${originalTxHash}:${status}:${evidence ?? ''}`;
     const statusHash = crypto
@@ -133,6 +164,93 @@ export const updateReportStatus = async (
       original_report_tx: originalTxHash,
       status_update_tx: statusTxHash,
       explorer_url: stellarService.getExplorerUrl(statusTxHash),
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const getMyReports = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { page, pageSize } = req.query as unknown as ReportMineQueryDTO;
+    const filter =
+      req.user?.role === 'CITIZEN'
+        ? { reporter_user_id: req.user.id }
+        : req.user?.district
+          ? { district: req.user.district }
+          : {};
+
+    const reports = await ReportModel.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .lean()
+      .exec();
+
+    return res.status(200).json({
+      data: reports.map((report) => ({
+        id: String(report._id),
+        title: report.title,
+        status: report.status,
+        category: report.category,
+        district: report.district ?? null,
+        created_at: (report as typeof report & { createdAt?: Date }).createdAt ?? null,
+      })),
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const getReportDetail = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { reportId } = req.params as unknown as ReportDetailParamsDTO;
+    const report = await ReportModel.findById(reportId).lean();
+
+    if (!report) {
+      throw new AppError('Report not found', 404, 'REPORT_NOT_FOUND');
+    }
+
+    if (req.user?.role === 'CITIZEN' && report.reporter_user_id !== req.user.id) {
+      throw new AppError('Forbidden', 403, 'FORBIDDEN');
+    }
+
+    if (
+      req.user?.role === 'AGENCY_ADMIN' &&
+      req.user.district &&
+      report.district &&
+      report.district !== req.user.district
+    ) {
+      throw new AppError('Forbidden across districts', 403, 'FORBIDDEN');
+    }
+
+    const updates = await StatusUpdateModel.find({ reportId: report._id })
+      .sort({ createdAt: -1 })
+      .lean()
+      .exec();
+
+    return res.status(200).json({
+      id: String(report._id),
+      title: report.title,
+      description: report.description,
+      status: report.status,
+      category: report.category,
+      district: report.district ?? null,
+      anchor_status: report.anchor_status,
+      media_urls: report.media_urls,
+      history: updates.map((update) => ({
+        status: update.nextStatus,
+        note: update.note ?? null,
+        createdAt: (update as typeof update & { createdAt?: Date }).createdAt ?? null,
+      })),
     });
   } catch (error) {
     return next(error);

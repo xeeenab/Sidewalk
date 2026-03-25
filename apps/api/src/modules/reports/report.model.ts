@@ -30,6 +30,7 @@ export type ReportLocation = {
 
 export interface Report {
   reporter_user_id: string | null;
+  district?: string | null;
   data_hash: string;
   anchor_status: 'ANCHOR_QUEUED' | 'ANCHOR_SUCCESS' | 'ANCHOR_FAILED';
   anchor_attempts: number;
@@ -60,6 +61,11 @@ const isValidLatitude = (value: number) =>
 const reportSchema = new Schema<Report>(
   {
     reporter_user_id: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    district: {
       type: String,
       default: null,
       index: true,

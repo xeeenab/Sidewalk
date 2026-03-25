@@ -48,6 +48,7 @@ export const verifyReportBodySchema = z.object({
 
 export const updateReportStatusBodySchema = z.object({
   originalTxHash: trimmed('originalTxHash'),
+  reportId: z.string().trim().min(1).optional(),
   status: trimmed('status'),
   evidence: z
     .string({
@@ -123,8 +124,19 @@ const boundsQuerySchema = z
 
 export const reportsMapQuerySchema = z.union([radiusQuerySchema, boundsQuerySchema]);
 
+export const reportMineQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  pageSize: z.coerce.number().int().positive().max(50).default(10),
+});
+
+export const reportDetailParamsSchema = z.object({
+  reportId: trimmed('reportId'),
+});
+
 export type CreateReportDTO = z.infer<typeof createReportBodySchema>;
 export type VerifyReportDTO = z.infer<typeof verifyReportBodySchema>;
 export type UpdateReportStatusDTO = z.infer<typeof updateReportStatusBodySchema>;
 export type VerifyStatusDTO = z.infer<typeof verifyStatusBodySchema>;
 export type ReportsMapQueryDTO = z.infer<typeof reportsMapQuerySchema>;
+export type ReportMineQueryDTO = z.infer<typeof reportMineQuerySchema>;
+export type ReportDetailParamsDTO = z.infer<typeof reportDetailParamsSchema>;
