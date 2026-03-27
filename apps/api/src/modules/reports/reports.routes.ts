@@ -1,7 +1,12 @@
 import { Router } from 'express';
 import {
+  addReportComment,
   createReport,
+  getPublicReportById,
+  getReportDetail,
+  getReportComments,
   listReports,
+  listPublicReports,
   getMapReports,
   getMyReports,
   verifyReport,
@@ -12,9 +17,12 @@ import { authenticateToken, requireRole } from '../auth/auth.middleware';
 import { validateRequest } from '../../core/validation/validate-request';
 import { stellarAnchoringRateLimiter } from '../../core/rate-limit/rate-limit.middleware';
 import {
-  anchorIssuesQuerySchema,
   createReportBodySchema,
+  myReportsQuerySchema,
   listReportsQuerySchema,
+  publicReportListQuerySchema,
+  reportCommentBodySchema,
+  reportDetailParamsSchema,
   reportsMapQuerySchema,
   updateReportStatusBodySchema,
   verifyReportBodySchema,
@@ -22,6 +30,18 @@ import {
 } from './reports.schemas';
 
 const router: Router = Router();
+
+router.get(
+  '/public',
+  validateRequest({ query: publicReportListQuerySchema }),
+  listPublicReports,
+);
+
+router.get(
+  '/public/:reportId',
+  validateRequest({ params: reportDetailParamsSchema }),
+  getPublicReportById,
+);
 
 router.get(
   '/',
@@ -60,8 +80,24 @@ router.get(
   '/:reportId',
   authenticateToken,
   requireRole(['CITIZEN', 'AGENCY_ADMIN']),
-  validateRequest({ params: reportParamsSchema }),
-  getReportById,
+  validateRequest({ params: reportDetailParamsSchema }),
+  getReportDetail,
+);
+
+router.get(
+  '/:reportId/comments',
+  authenticateToken,
+  requireRole(['CITIZEN', 'AGENCY_ADMIN']),
+  validateRequest({ params: reportDetailParamsSchema }),
+  getReportComments,
+);
+
+router.post(
+  '/:reportId/comments',
+  authenticateToken,
+  requireRole(['CITIZEN', 'AGENCY_ADMIN']),
+  validateRequest({ params: reportDetailParamsSchema, body: reportCommentBodySchema }),
+  addReportComment,
 );
 
 router.post(

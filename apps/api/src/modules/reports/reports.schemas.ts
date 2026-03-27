@@ -169,6 +169,10 @@ export const reportListQuerySchema = z.object({
   pageSize: positiveInt('pageSize', 20).refine((value) => value <= 100, 'pageSize must be <= 100'),
   status: optionalTrimmed(),
   category: optionalTrimmed(),
+  sort: z.enum(['createdAt', 'updatedAt']).optional(),
+  order: z.enum(['asc', 'desc']).optional(),
+  reporterId: optionalTrimmed(),
+  district: optionalTrimmed(),
   mine: z
     .enum(['true', 'false'])
     .optional()
@@ -179,9 +183,27 @@ export const reportDetailParamsSchema = z.object({
   reportId: trimmed('reportId'),
 });
 
+export const reportCommentBodySchema = z.object({
+  body: trimmed('body'),
+  visibility: z.enum(['PUBLIC', 'INTERNAL']).default('PUBLIC'),
+});
+
+export const publicReportListQuerySchema = z.object({
+  page: positiveInt('page', 1),
+  pageSize: positiveInt('pageSize', 12).refine((value) => value <= 100, 'pageSize must be <= 100'),
+  status: optionalTrimmed(),
+  category: optionalTrimmed(),
+});
+
+export const listReportsQuerySchema = reportListQuerySchema;
+
 export type CreateReportDTO = z.infer<typeof createReportBodySchema>;
 export type VerifyReportDTO = z.infer<typeof verifyReportBodySchema>;
 export type UpdateReportStatusDTO = z.infer<typeof updateReportStatusBodySchema>;
 export type VerifyStatusDTO = z.infer<typeof verifyStatusBodySchema>;
 export type ReportsMapQueryDTO = z.infer<typeof reportsMapQuerySchema>;
-export type ListReportsQueryDTO = z.infer<typeof listReportsQuerySchema>;
+export type ListReportsQueryDTO = z.infer<typeof reportListQuerySchema>;
+export type MyReportsQueryDTO = z.infer<typeof myReportsQuerySchema>;
+export type ReportDetailParamsDTO = z.infer<typeof reportDetailParamsSchema>;
+export type ReportCommentBodyDTO = z.infer<typeof reportCommentBodySchema>;
+export type PublicReportListQueryDTO = z.infer<typeof publicReportListQuerySchema>;

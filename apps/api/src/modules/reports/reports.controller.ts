@@ -6,18 +6,25 @@ import { AppError } from '../../core/errors/app-error';
 import { logger } from '../../core/logging/logger';
 import { MediaDraftModel } from '../media/media-draft.model';
 import { MediaUploadModel } from '../media/media-upload.model';
-import { StatusUpdateModel } from './status-update.model';
+import { UserModel } from '../users/user.model';
+import { ReportCommentModel } from './report-comment.model';
 import { ReportModel } from './report.model';
 import { enqueueStellarAnchor } from './reports.anchor.queue';
+import { buildDeterministicSnapshot, hashSnapshot } from './reports.snapshot';
 import { StatusUpdateModel } from './status-update.model';
 import {
   CreateReportDTO,
   ListReportsQueryDTO,
+  MyReportsQueryDTO,
+  PublicReportListQueryDTO,
+  ReportCommentBodyDTO,
+  ReportDetailParamsDTO,
   ReportsMapQueryDTO,
   UpdateReportStatusDTO,
   VerifyReportDTO,
   VerifyStatusDTO,
 } from './reports.schemas';
+import { type ReportStatus } from './report.model';
 
 const ALLOWED_STATUS_TRANSITIONS: Record<ReportStatus, ReportStatus[]> = {
   PENDING: ['ACKNOWLEDGED', 'REJECTED', 'ESCALATED'],
@@ -399,6 +406,170 @@ export const getMyReports = async (
   }
 };
 
+export const getReportById = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { reportId } = req.params as unknown as ReportDetailParamsDTO;
+    const report = await ReportModel.findById(reportId).lean();
+
+    if (!report) {
+      throw new AppError('Report not found', 404, 'REPORT_NOT_FOUND');
+    }
+
+    const comments = await ReportCommentModel.find({
+      reportId,
+      ...(req.user?.role === 'AGENCY_ADMIN' ? {} : { visibility: 'PUBLIC' }),
+    })
+      .sort({ createdAt: 1 })
+      .lean();
+
+    return res.status(200).json({
+      id: String(report._id),
+      title: report.title,
+      description: report.description,
+      category: report.category,
+      status: report.status,
+      anchorStatus: report.anchor_status,
+      stellarTxHash: report.stellar_tx_hash,
+      mediaUrls: report.media_urls,
+      comments,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const addReportComment = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { reportId } = req.params as unknown as ReportDetailParamsDTO;
+    const { body, visibility } = req.body as ReportCommentBodyDTO;
+    const report = await ReportModel.findById(reportId).lean();
+
+    if (!report) {
+      throw new AppError('Report not found', 404, 'REPORT_NOT_FOUND');
+    }
+
+    if (req.user?.role === 'CITIZEN' && report.reporter_user_id !== req.user.id) {
+      throw new AppError('Forbidden', 403, 'FORBIDDEN');
+    }
+
+    const comment = await ReportCommentModel.create({
+      reportId: report._id,
+      authorId: req.user?.id ?? 'unknown',
+      authorRole: req.user?.role ?? 'CITIZEN',
+      body,
+      visibility: req.user?.role === 'AGENCY_ADMIN' ? visibility : 'PUBLIC',
+    });
+
+    return res.status(201).json({
+      id: String(comment._id),
+      body: comment.body,
+      visibility: comment.visibility,
+      createdAt: (comment as typeof comment & { createdAt?: Date }).createdAt ?? null,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const getReportComments = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { reportId } = req.params as unknown as ReportDetailParamsDTO;
+    const comments = await ReportCommentModel.find({
+      reportId,
+      ...(req.user?.role === 'AGENCY_ADMIN' ? {} : { visibility: 'PUBLIC' }),
+    })
+      .sort({ createdAt: 1 })
+      .lean();
+
+    return res.status(200).json({ data: comments });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const listPublicReports = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const query = req.query as unknown as PublicReportListQueryDTO;
+    const filter: Record<string, unknown> = {};
+
+    if (query.status) {
+      filter.status = query.status;
+    }
+
+    if (query.category) {
+      filter.category = query.category;
+    }
+
+    const reports = await ReportModel.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((query.page - 1) * query.pageSize)
+      .limit(query.pageSize)
+      .lean();
+
+    return res.status(200).json({
+      data: reports.map((report) => ({
+        id: String(report._id),
+        title: report.title,
+        description: report.description,
+        category: report.category,
+        status: report.status,
+        location: report.location,
+        anchorStatus: report.anchor_status,
+      })),
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const getPublicReportById = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { reportId } = req.params as unknown as ReportDetailParamsDTO;
+    const report = await ReportModel.findById(reportId).lean();
+
+    if (!report) {
+      throw new AppError('Report not found', 404, 'REPORT_NOT_FOUND');
+    }
+
+    const comments = await ReportCommentModel.find({ reportId, visibility: 'PUBLIC' })
+      .sort({ createdAt: 1 })
+      .lean();
+
+    return res.status(200).json({
+      id: String(report._id),
+      title: report.title,
+      description: report.description,
+      category: report.category,
+      status: report.status,
+      location: report.location,
+      anchorStatus: report.anchor_status,
+      comments,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 export const verifyStatus = async (
   req: Request,
   res: Response,
@@ -511,70 +682,6 @@ export const getMapReports = async (
         location: pin.location,
         status: pin.status,
         category: pin.category,
-      })),
-    });
-  } catch (error) {
-    return next(error);
-  }
-};
-
-export const getReportById = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  try {
-    const query = req.query as unknown as ReportListQueryDTO;
-    const filter: Record<string, unknown> = {};
-
-    if (query.status) {
-      filter.status = query.status;
-    }
-
-    if (query.category) {
-      filter.category = query.category;
-    }
-
-    if (query.mine && req.user?.id) {
-      filter.reporter_user_id = req.user.id;
-    }
-
-    const page = query.page;
-    const pageSize = query.pageSize;
-
-    const [reports, total] = await Promise.all([
-      ReportModel.find(filter)
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * pageSize)
-        .limit(pageSize)
-        .lean()
-        .exec(),
-      ReportModel.countDocuments(filter),
-    ]);
-    const typedReports = reports as Array<{
-      _id: unknown;
-      title: string;
-      category: string;
-      status: string;
-      anchor_status: string;
-      integrity_flag: string;
-      location: { type: 'Point'; coordinates: [number, number] };
-      createdAt?: Date;
-    }>;
-
-    return res.status(200).json({
-      page,
-      pageSize,
-      total,
-      data: typedReports.map((report) => ({
-        id: String(report._id),
-        title: report.title,
-        category: report.category,
-        status: report.status,
-        anchor_status: report.anchor_status,
-        integrity_flag: report.integrity_flag,
-        created_at: report.createdAt ?? null,
-        location: report.location,
       })),
     });
   } catch (error) {
