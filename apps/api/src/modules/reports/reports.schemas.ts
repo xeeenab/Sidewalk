@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { REPORT_CATEGORIES, REPORT_STATUSES } from './report.model';
 
 const trimmed = (label: string) =>
   z
@@ -48,7 +49,7 @@ export const verifyReportBodySchema = z.object({
 
 export const updateReportStatusBodySchema = z.object({
   originalTxHash: trimmed('originalTxHash'),
-  status: trimmed('status'),
+  status: z.enum(REPORT_STATUSES),
   evidence: z
     .string({
       invalid_type_error: 'evidence must be a string',
@@ -60,7 +61,7 @@ export const updateReportStatusBodySchema = z.object({
 export const verifyStatusBodySchema = z.object({
   statusTxHash: trimmed('statusTxHash'),
   originalTxHash: trimmed('originalTxHash'),
-  status: trimmed('status'),
+  status: z.enum(REPORT_STATUSES),
   evidence: z
     .string({
       invalid_type_error: 'evidence must be a string',
@@ -121,6 +122,21 @@ const boundsQuerySchema = z
     path: ['minLng'],
   });
 
+export const listReportsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  status: z.enum(REPORT_STATUSES).optional(),
+  category: z.enum(REPORT_CATEGORIES).optional(),
+  district: z.string().trim().min(1).optional(),
+  reporterId: z.string().trim().min(1).optional(),
+  mine: z
+    .union([z.literal('true'), z.literal('false')])
+    .transform((value) => value === 'true')
+    .optional(),
+  sort: z.enum(['createdAt', 'updatedAt']).default('createdAt'),
+  order: z.enum(['asc', 'desc']).default('desc'),
+});
+
 export const reportsMapQuerySchema = z.union([radiusQuerySchema, boundsQuerySchema]);
 
 export type CreateReportDTO = z.infer<typeof createReportBodySchema>;
@@ -128,3 +144,4 @@ export type VerifyReportDTO = z.infer<typeof verifyReportBodySchema>;
 export type UpdateReportStatusDTO = z.infer<typeof updateReportStatusBodySchema>;
 export type VerifyStatusDTO = z.infer<typeof verifyStatusBodySchema>;
 export type ReportsMapQueryDTO = z.infer<typeof reportsMapQuerySchema>;
+export type ListReportsQueryDTO = z.infer<typeof listReportsQuerySchema>;
