@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { stellarService } from '../../config/stellar';
 import { AppError } from '../../core/errors/app-error';
 import { logger } from '../../core/logging/logger';
+import { MediaDraftModel } from '../media/media-draft.model';
 import { MediaUploadModel } from '../media/media-upload.model';
 import { ReportModel } from './report.model';
 import { enqueueStellarAnchor } from './reports.anchor.queue';
@@ -38,14 +39,37 @@ export const createReport = async (
   next: NextFunction,
 ) => {
   try {
-    const { title, description, category, location, media_urls } =
+    const { title, description, category, location, media_urls, draft_id } =
       req.body as CreateReportDTO;
+    const reporterId = req.user?.id ?? null;
 
     const mediaUrls = media_urls ?? [];
-    const firstMediaUrl = mediaUrls[0];
-    const mediaUpload = firstMediaUrl
-      ? await MediaUploadModel.findOne({ url: firstMediaUrl }).lean()
-      : null;
+    const mediaUploads = mediaUrls.length
+      ? await MediaUploadModel.find({ url: { $in: mediaUrls } }).lean()
+      : [];
+
+    if (mediaUploads.length !== mediaUrls.length) {
+      throw new AppError('One or more media uploads could not be found', 400, 'MEDIA_NOT_FOUND');
+    }
+
+    for (const upload of mediaUploads) {
+      if (upload.owner_user_id !== reporterId) {
+        throw new AppError('Media uploads must belong to the current user', 403, 'MEDIA_FORBIDDEN');
+      }
+
+      if (draft_id && upload.draft_id !== draft_id) {
+        throw new AppError('Media upload is not linked to the supplied draft', 400, 'MEDIA_DRAFT_MISMATCH');
+      }
+    }
+
+    if (draft_id) {
+      const draft = await MediaDraftModel.findById(draft_id);
+      if (!draft || draft.owner_user_id !== reporterId || draft.status !== 'OPEN') {
+        throw new AppError('Media draft not found', 404, 'MEDIA_DRAFT_NOT_FOUND');
+      }
+    }
+
+    const mediaUpload = mediaUploads[0] ?? null;
 
     let exifVerified = false;
     let exifDistanceMeters: number | null = null;
@@ -72,7 +96,7 @@ export const createReport = async (
       .digest('hex');
 
     const report = await ReportModel.create({
-      reporter_user_id: req.user?.id ?? null,
+      reporter_user_id: reporterId,
       data_hash: contentHash,
       anchor_status: 'ANCHOR_QUEUED',
       anchor_attempts: 0,
@@ -95,6 +119,29 @@ export const createReport = async (
       reportId: String(report._id),
       dataHash: contentHash,
     });
+
+    if (mediaUrls.length > 0) {
+      await MediaUploadModel.updateMany(
+        { url: { $in: mediaUrls } },
+        {
+          $set: {
+            attached_report_id: String(report._id),
+            expires_at: null,
+          },
+        },
+      );
+    }
+
+    if (draft_id) {
+      await MediaDraftModel.updateOne(
+        { _id: draft_id },
+        {
+          $set: {
+            status: 'FINALIZED',
+          },
+        },
+      );
+    }
 
     return res.status(202).json({
       message: 'Report accepted; anchoring queued',

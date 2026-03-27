@@ -39,6 +39,13 @@ export const createReportBodySchema = z.object({
       ),
   }),
   media_urls: z.array(z.string().url('media_urls must contain valid URLs')).default([]),
+  draft_id: z
+    .string({
+      invalid_type_error: 'draft_id must be a string',
+    })
+    .trim()
+    .regex(/^[a-fA-F0-9]{24}$/, 'draft_id must be a valid id')
+    .optional(),
 });
 
 export const verifyReportBodySchema = z.object({
