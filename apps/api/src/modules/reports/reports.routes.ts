@@ -13,6 +13,7 @@ import { authenticateToken, requireRole } from '../auth/auth.middleware';
 import { validateRequest } from '../../core/validation/validate-request';
 import { stellarAnchoringRateLimiter } from '../../core/rate-limit/rate-limit.middleware';
 import {
+  anchorIssuesQuerySchema,
   createReportBodySchema,
   myReportsQuerySchema,
   reportsMapQuerySchema,
