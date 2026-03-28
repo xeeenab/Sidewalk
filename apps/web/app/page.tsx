@@ -29,9 +29,6 @@ export default function HomePage() {
           <Link className="button button-primary" href="/auth/request-otp">
             Open auth flow
           </Link>
-          <Link className="button button-secondary" href="/diagnostics">
-            Open diagnostics
-          </Link>
           <Link className="button button-primary" href="/health">
             Open health page
           </Link>

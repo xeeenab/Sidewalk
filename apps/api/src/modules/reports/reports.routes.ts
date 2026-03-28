@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import {
   createReport,
-  getAnchorIssues,
   getReportDetail,
   getReportList,
   getMapReports,
+  getMyReports,
   verifyReport,
   updateReportStatus,
   verifyStatus,
@@ -15,8 +15,7 @@ import { stellarAnchoringRateLimiter } from '../../core/rate-limit/rate-limit.mi
 import {
   anchorIssuesQuerySchema,
   createReportBodySchema,
-  reportDetailParamsSchema,
-  reportListQuerySchema,
+  myReportsQuerySchema,
   reportsMapQuerySchema,
   updateReportStatusBodySchema,
   verifyReportBodySchema,
@@ -24,14 +23,6 @@ import {
 } from './reports.schemas';
 
 const router: Router = Router();
-
-router.get(
-  '/anchor/issues',
-  authenticateToken,
-  requireRole(['AGENCY_ADMIN']),
-  validateRequest({ query: anchorIssuesQuerySchema }),
-  getAnchorIssues,
-);
 
 router.get(
   '/',
@@ -55,6 +46,14 @@ router.get(
   requireRole(['CITIZEN', 'AGENCY_ADMIN']),
   validateRequest({ query: reportsMapQuerySchema }),
   getMapReports,
+);
+
+router.get(
+  '/mine',
+  authenticateToken,
+  requireRole(['CITIZEN', 'AGENCY_ADMIN']),
+  validateRequest({ query: myReportsQuerySchema }),
+  getMyReports,
 );
 
 router.post(

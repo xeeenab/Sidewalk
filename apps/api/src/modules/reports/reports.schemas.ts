@@ -9,7 +9,7 @@ const trimmed = (label: string) =>
     .trim()
     .min(1, `${label} is required`);
 
-export const createReportBodySchema = z.object({
+const reportSnapshotPayloadSchema = z.object({
   title: trimmed('title'),
   description: trimmed('description'),
   category: z.enum([
@@ -25,25 +25,36 @@ export const createReportBodySchema = z.object({
   ]),
   location: z.object({
     type: z.literal('Point'),
-    coordinates: z
-      .tuple([z.number(), z.number()])
-      .refine(
-        ([lng, lat]) =>
-          Number.isFinite(lng) &&
-          Number.isFinite(lat) &&
-          lng >= -180 &&
-          lng <= 180 &&
-          lat >= -90 &&
-          lat <= 90,
-        'location.coordinates must be valid and ordered [longitude, latitude]',
-      ),
+    coordinates: z.tuple([z.number(), z.number()]),
   }),
   media_urls: z.array(z.string().url('media_urls must contain valid URLs')).default([]),
+  draft_id: z
+    .string({
+      invalid_type_error: 'draft_id must be a string',
+    })
+    .trim()
+    .regex(/^[a-fA-F0-9]{24}$/, 'draft_id must be a valid id')
+    .optional(),
 });
 
-export const verifyReportBodySchema = z.object({
+export const createReportBodySchema = z.object({
+  ...reportSnapshotPayloadSchema.shape,
+});
+
+export const verifyReportBodySchema = z
+  .object({
   txHash: trimmed('txHash'),
-  originalDescription: trimmed('originalDescription'),
+    originalDescription: trimmed('originalDescription').optional(),
+    report: reportSnapshotPayloadSchema.optional(),
+  })
+  .refine((value) => value.originalDescription || value.report, {
+    message: 'Either originalDescription or report is required',
+    path: ['report'],
+  });
+
+export const myReportsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
 
 export const updateReportStatusBodySchema = z.object({
@@ -163,11 +174,6 @@ export const reportDetailParamsSchema = z.object({
   reportId: trimmed('reportId'),
 });
 
-export const anchorIssuesQuerySchema = z.object({
-  status: z.enum(['ALL', 'ANCHOR_FAILED', 'ANCHOR_QUEUED']).default('ALL'),
-  limit: z.coerce.number().int().positive().max(100).default(25),
-});
-
 export type CreateReportDTO = z.infer<typeof createReportBodySchema>;
 export type VerifyReportDTO = z.infer<typeof verifyReportBodySchema>;
 export type UpdateReportStatusDTO = z.infer<typeof updateReportStatusBodySchema>;
@@ -175,4 +181,3 @@ export type VerifyStatusDTO = z.infer<typeof verifyStatusBodySchema>;
 export type ReportsMapQueryDTO = z.infer<typeof reportsMapQuerySchema>;
 export type ReportListQueryDTO = z.infer<typeof reportListQuerySchema>;
 export type ReportDetailParamsDTO = z.infer<typeof reportDetailParamsSchema>;
-export type AnchorIssuesQueryDTO = z.infer<typeof anchorIssuesQuerySchema>;
