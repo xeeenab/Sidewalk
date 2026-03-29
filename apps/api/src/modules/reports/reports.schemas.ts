@@ -132,6 +132,10 @@ const boundsQuerySchema = z
     path: ['minLng'],
   });
 
+export const reportParamsSchema = z.object({
+  reportId: z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'reportId must be a valid ObjectId'),
+});
+
 export const reportsMapQuerySchema = z.union([radiusQuerySchema, boundsQuerySchema]);
 
 const optionalTrimmed = () =>
