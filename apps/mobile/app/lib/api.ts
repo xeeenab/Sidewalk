@@ -17,17 +17,3 @@ export const apiFetch = async <T>(path: string, init?: RequestInit): Promise<T> 
 
   return payload;
 };
-
-export const authorizedApiFetch = async <T>(
-  path: string,
-  accessToken: string,
-  init?: RequestInit,
-): Promise<T> =>
-  apiFetch<T>(path, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-      ...(init?.headers ?? {}),
-    },
-  });

@@ -7,6 +7,24 @@ import { Role } from './auth.types';
 import { parseCookies, setRefreshCookie, COOKIE_NAME } from './auth.session';
 import { requestOtp, verifyOtpAndCreateSession } from './otp.service';
 
+const isDevSessionEnabled = (req: Request) => {
+  if (process.env.NODE_ENV === 'production') {
+    return false;
+  }
+
+  if (process.env.ALLOW_DEV_SESSION !== 'true') {
+    return false;
+  }
+
+  const expectedSecret = process.env.DEV_SESSION_SECRET?.trim();
+  if (!expectedSecret) {
+    return false;
+  }
+
+  const presentedSecret = req.header('x-dev-session-secret')?.trim();
+  return presentedSecret === expectedSecret;
+};
+
 export const refreshSession = async (
   req: Request,
   res: Response,
@@ -110,7 +128,7 @@ export const issueDevSession = async (
   next: NextFunction,
 ) => {
   try {
-    if (process.env.NODE_ENV === 'production') {
+    if (!isDevSessionEnabled(req)) {
       return next(new AppError('Not found', 404, 'NOT_FOUND'));
     }
 
