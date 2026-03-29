@@ -3,6 +3,7 @@ import {
   createReport,
   listReports,
   getMapReports,
+  getMyReports,
   verifyReport,
   updateReportStatus,
   verifyStatus,
@@ -11,6 +12,7 @@ import { authenticateToken, requireRole } from '../auth/auth.middleware';
 import { validateRequest } from '../../core/validation/validate-request';
 import { stellarAnchoringRateLimiter } from '../../core/rate-limit/rate-limit.middleware';
 import {
+  anchorIssuesQuerySchema,
   createReportBodySchema,
   listReportsQuerySchema,
   reportsMapQuerySchema,
@@ -35,6 +37,14 @@ router.get(
   requireRole(['CITIZEN', 'AGENCY_ADMIN']),
   validateRequest({ query: reportsMapQuerySchema }),
   getMapReports,
+);
+
+router.get(
+  '/mine',
+  authenticateToken,
+  requireRole(['CITIZEN', 'AGENCY_ADMIN']),
+  validateRequest({ query: myReportsQuerySchema }),
+  getMyReports,
 );
 
 router.post(
