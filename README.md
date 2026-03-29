@@ -88,6 +88,10 @@ Mobile app:
 pnpm dev:mobile
 ```
 
+## Demo runbook
+
+Use [docs/phase-1-demo-runbook.md](./docs/phase-1-demo-runbook.md) for the current end-to-end demo path across API, web, and mobile.
+
 ## Local quality checks
 
 Run the full workspace checks:
