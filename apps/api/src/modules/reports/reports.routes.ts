@@ -56,6 +56,14 @@ router.post(
   createReport,
 );
 
+router.get(
+  '/:reportId',
+  authenticateToken,
+  requireRole(['CITIZEN', 'AGENCY_ADMIN']),
+  validateRequest({ params: reportParamsSchema }),
+  getReportById,
+);
+
 router.post(
   '/verify',
   authenticateToken,

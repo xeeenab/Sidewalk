@@ -133,19 +133,8 @@ const boundsQuerySchema = z
     path: ['minLng'],
   });
 
-export const listReportsQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(20),
-  status: z.enum(REPORT_STATUSES).optional(),
-  category: z.enum(REPORT_CATEGORIES).optional(),
-  district: z.string().trim().min(1).optional(),
-  reporterId: z.string().trim().min(1).optional(),
-  mine: z
-    .union([z.literal('true'), z.literal('false')])
-    .transform((value) => value === 'true')
-    .optional(),
-  sort: z.enum(['createdAt', 'updatedAt']).default('createdAt'),
-  order: z.enum(['asc', 'desc']).default('desc'),
+export const reportParamsSchema = z.object({
+  reportId: z.string().trim().regex(/^[a-fA-F0-9]{24}$/, 'reportId must be a valid ObjectId'),
 });
 
 export const reportsMapQuerySchema = z.union([radiusQuerySchema, boundsQuerySchema]);
