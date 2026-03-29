@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import {
   createReport,
-  getReportDetail,
-  getReportList,
+  listReports,
   getMapReports,
+  getMyReports,
   verifyReport,
   updateReportStatus,
   verifyStatus,
@@ -12,9 +12,9 @@ import { authenticateToken, requireRole } from '../auth/auth.middleware';
 import { validateRequest } from '../../core/validation/validate-request';
 import { stellarAnchoringRateLimiter } from '../../core/rate-limit/rate-limit.middleware';
 import {
+  anchorIssuesQuerySchema,
   createReportBodySchema,
-  reportDetailParamsSchema,
-  reportListQuerySchema,
+  listReportsQuerySchema,
   reportsMapQuerySchema,
   updateReportStatusBodySchema,
   verifyReportBodySchema,
@@ -27,16 +27,8 @@ router.get(
   '/',
   authenticateToken,
   requireRole(['CITIZEN', 'AGENCY_ADMIN']),
-  validateRequest({ query: reportListQuerySchema }),
-  getReportList,
-);
-
-router.get(
-  '/:reportId',
-  authenticateToken,
-  requireRole(['CITIZEN', 'AGENCY_ADMIN']),
-  validateRequest({ params: reportDetailParamsSchema }),
-  getReportDetail,
+  validateRequest({ query: listReportsQuerySchema }),
+  listReports,
 );
 
 router.get(
@@ -47,6 +39,14 @@ router.get(
   getMapReports,
 );
 
+router.get(
+  '/mine',
+  authenticateToken,
+  requireRole(['CITIZEN', 'AGENCY_ADMIN']),
+  validateRequest({ query: myReportsQuerySchema }),
+  getMyReports,
+);
+
 router.post(
   '/',
   authenticateToken,
@@ -54,6 +54,14 @@ router.post(
   stellarAnchoringRateLimiter,
   validateRequest({ body: createReportBodySchema }),
   createReport,
+);
+
+router.get(
+  '/:reportId',
+  authenticateToken,
+  requireRole(['CITIZEN', 'AGENCY_ADMIN']),
+  validateRequest({ params: reportParamsSchema }),
+  getReportById,
 );
 
 router.post(

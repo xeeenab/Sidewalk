@@ -89,7 +89,6 @@ export function ProtectedAppShell({ children }: Readonly<{ children: ReactNode }
         <nav className="topbar-links" aria-label="Authenticated navigation">
           <Link href="/dashboard">Dashboard</Link>
           <Link href="/dashboard/reports">Reports</Link>
-          <Link href="/dashboard/admin">Admin</Link>
           <button
             className="button button-secondary"
             type="button"
