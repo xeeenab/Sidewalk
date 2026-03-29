@@ -518,7 +518,7 @@ export const getMapReports = async (
   }
 };
 
-export const getReportList = async (
+export const getReportById = async (
   req: Request,
   res: Response,
   next: NextFunction,
