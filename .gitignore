@@ -94,3 +94,8 @@ app-example
 /ios
 /android
 node_modules
+
+# Local planning and issue automation artifacts
+docs/mvp-execution-plan.md
+scripts/export-gh-issues.mjs
+scripts/post-gh-issues.mjs

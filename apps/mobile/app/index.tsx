@@ -1,44 +1,26 @@
-import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View, ActivityIndicator } from 'react-native';
-import { getMobileEnv } from '../src/config/env';
+import { Redirect } from 'expo-router';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { useSession } from './providers/session-provider';
 
-export default function App() {
-  const [status, setStatus] = useState<string>('Checking...');
-  const [loading, setLoading] = useState(true);
-  const { apiUrl } = getMobileEnv();
-  const healthEndpoint = `${apiUrl}/api/health`;
+export default function IndexScreen() {
+  const { accessToken, isHydrating } = useSession();
 
-  useEffect(() => {
-    fetch(healthEndpoint)
-      .then((res) => res.json())
-      .then((data) => {
-        const integrations = data.integrations
-          ? Object.entries(data.integrations)
-              .map(([name, value]) => `${name}: ${String(value)}`)
-              .join('\n')
-          : 'No integration details';
-        setStatus(`API: ${data.status}\n${integrations}`);
-        setLoading(false);
-      })
-      .catch((err) => {
-        setStatus(`Error connecting to API\n${healthEndpoint}`);
-        console.error(err);
-        setLoading(false);
-      });
-  }, [healthEndpoint]);
+  if (isHydrating) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#1f4d3f" />
+      </View>
+    );
+  }
 
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Sidewalk 🌍</Text>
-
-      {loading ? (
-        <ActivityIndicator size="large" />
-      ) : (
-        <Text style={styles.status}>{status}</Text>
-      )}
-
-      <StatusBar style="auto" />
-    </View>
-  );
+  return <Redirect href={accessToken ? '/(app)/(tabs)' : '/(auth)/login'} />;
 }
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fffaf2',
+  },
+});
