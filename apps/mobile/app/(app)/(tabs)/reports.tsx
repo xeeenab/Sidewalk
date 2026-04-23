@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useEffectEvent, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -46,8 +46,11 @@ export default function ReportsScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadReports = async () => {
+  const loadReports = useEffectEvent(async () => {
     if (!accessToken) {
+      setReports([]);
+      setError(null);
+      setIsLoading(false);
       return;
     }
 
@@ -66,7 +69,7 @@ export default function ReportsScreen() {
     } finally {
       setIsLoading(false);
     }
-  };
+  });
 
   useEffect(() => {
     void loadReports();
